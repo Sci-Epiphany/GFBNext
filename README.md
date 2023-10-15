@@ -7,7 +7,6 @@ This is an introduction to the initial version of GFBN. GFBN is used for dual-br
 
 ## Updates
 - [x] 010/2023, init repository.
-- [x] 
 
 
 
