@@ -11,7 +11,7 @@ import math
 from math import log
 from torch.nn.init import calculate_gain
 from torch.nn.parameter import Parameter
-from ops_dcnv3.modules.dcnv3 import DCNv3
+# from ops_dcnv3.modules.dcnv3 import DCNv3
 
 
 
@@ -204,6 +204,23 @@ class AttentionModule(nn.Module):
         return u * attn
 
 
+class DeformableAttention(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.dcn0 = DCNv3(dim, 3, pad=1, group=dim)
+        self.conv1 = nn.Conv2d(dim, dim, 1)
+
+        self.softmax = nn.Softmax(dim=1)
+
+    def forward(self, x):
+        x = x.permute(0, 2, 3, 1)   # N H W C
+        attn = self.dcn0(x)
+        attn = attn.permute(0, 3, 1, 2)
+        attn = self.softmax(attn)
+        attn = self.conv1(attn)
+        return attn
+
+
 # It's a good attention mechanism  for rectification of two different modalities
 class BidirectionalAttention(nn.Module):
     def __init__(self, dim, num_heads=8, kernel=7, qkv_bias=False, qk_scale=None):
@@ -305,6 +322,28 @@ class FeatureEmbed(nn.Module):
         # x = self.residual(x_residual) + x
 
         return x
+
+
+class ChannelEmbed(nn.Module):
+    def __init__(self, in_channels, out_channels, reduction=1, norm_layer=nn.BatchNorm2d):
+        super(ChannelEmbed, self).__init__()
+        self.out_channels = out_channels
+        self.residual = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
+        self.channel_embed = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels // reduction, kernel_size=1, bias=True),
+            nn.Conv2d(out_channels // reduction, out_channels // reduction, kernel_size=3, stride=1, padding=1,
+                      bias=True, groups=out_channels // reduction),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels // reduction, out_channels, kernel_size=1, bias=True),
+            norm_layer(out_channels)
+        )
+        self.norm = norm_layer(out_channels)
+
+    def forward(self, x):
+        residual = self.residual(x)
+        x = self.channel_embed(x)
+        out = self.norm(residual + x)
+        return out
 
 
 class CrossFusionModule(nn.Module):

@@ -21,7 +21,15 @@ class IRSEG(Dataset):
     CLASSES = ["background", "car", "glass", "bike", "curve", "car_stop",
                  "guardrail", "color_cone", "bump"]
 
-    PALETTE = None
+    PALETTE = torch.tensor([[44, 160, 44],
+                            [31, 119, 180],
+                            [255, 127, 14],
+                            [214, 39, 40],
+                            [140, 86, 75],
+                            [127, 127, 127],
+                            [188, 189, 34],
+                            [255, 152, 150],
+                            [23, 190, 207]])
 
     def __init__(self, root: str = 'data/ir_seg_dataset-20230411T072452Z-001', split: str = 'train', transform=None, modals=['img', 'depth'],
                  case=None) -> None:
