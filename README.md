@@ -7,6 +7,7 @@ This is an introduction to the initial version of GFBN. GFBN is used for dual-br
 
 ## Updates
 - [x] 010/2023, init repository.
+- [x] 
 
 
 
@@ -39,7 +40,8 @@ data/
 ## Model Zoo
 
 ### MCubeS
-Will come soon!
+GFBN models checkpoints is available at ([**GoogleDrive**](https://drive.google.com/drive/folders/1fJwS-EGc_LKxC28zUTp9afeQVEgnzIh3?usp=sharing)).
+
 
 
 
@@ -59,28 +61,27 @@ To train GFBN model, please use change yaml file for `--cfg`. Several training e
 cd path/to/GFBN
 export PYTHONPATH="path/to/GFBN"
 python -m torch.distributed.launch --nproc_per_node=4 --use_env tools/train_mm.py --cfg configs/nyu_rgbd.yaml
-python -m torch.distributed.launch --nproc_per_node=4 --use_env tools/train_mm.py --cfg configs/mcubes_rgbadn.yaml
+python -m torch.distributed.launch --nproc_per_node=4 --use_env tools/train_mm.py --cfg configs/mcubes_rgbadn_next.yaml
 ```
 
 
 ## Evaluation
-To evaluate GFBN models, please download respective model weights ([**GoogleDrive**](https://drive.google.com/drive/folders/1MZaaZ5_rEVSjns3TBM0UDt6IW4X-HPIN?usp=share_link)) as:
+To evaluate GFBN models on the MCubeS, please download respective model weights ([**GoogleDrive**](https://drive.google.com/drive/folders/1fJwS-EGc_LKxC28zUTp9afeQVEgnzIh3?usp=sharing)) as:
 
 
 ```text
 output/
-├── MCubeS
-│   ├── cmnext_b2_mcubes_rgb.pth
-│   ├── cmnext_b2_mcubes_rgba.pth
-│   ├── cmnext_b2_mcubes_rgbad.pth
-│   └── cmnext_b2_mcubes_rgbadn.pth
+├── MCubeSBGM_GFBNEXT
+│   ├── GFBNEXT_B2_MCubeSBGM_in.pth
+│   ├── GFBNEXT_B2_MCubeSBGM_id.pth
+│   ├── GFBNEXT_B2_MCubeSBGM_iadn.pth
 
 
 Then, modify `--cfg` to respective config file, and run:
 ```bash
-cd path/to/GFBN
-export PYTHONPATH="path/to/GFBN"
-CUDA_VISIBLE_DEVICES=0 python tools/val_mm.py --cfg configs/mcubes_rgbadn.yaml
+cd path/to/GFBNext
+export PYTHONPATH="path/to/GFBNext"
+CUDA_VISIBLE_DEVICES=0 python tools/val_mm.py --cfg configs/mcubes_rgbadn_next.yaml
 ```
 
 ## License
