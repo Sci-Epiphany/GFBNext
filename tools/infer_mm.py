@@ -85,6 +85,13 @@ class SemSeg:
             x3 = os.path.join(img_fname.replace('data_2d_raw', 'data_2d_event'))
             x3 = x3.replace('/image_00/data_rect/', '/').replace('.png', '_event_image.png')
             lbl_path = os.path.join(*[img_fname.replace('data_2d_raw', 'data_2d_semantics/train').replace('data_rect', 'semantic')])
+        # elif cfg['DATASET']['NAME'] == 'IRSEG':
+        #     x1 = os.path.join(img_fname.replace('data_2d_raw', 'data_2d_hha'))
+        #     x2 = os.path.join(img_fname.replace('data_2d_raw', 'data_2d_lidar'))
+        #     x2 = x2.replace('.png', '_color.png')
+        #     x3 = os.path.join(img_fname.replace('data_2d_raw', 'data_2d_event'))
+        #     x3 = x3.replace('/image_00/data_rect/', '/').replace('.png', '_event_image.png')
+        #     lbl_path = os.path.join(*[img_fname.replace('data_2d_raw', 'data_2d_semantics/train').replace('data_rect', 'semantic')])
 
         image = io.read_image(img_fname)[:3, ...]
         img = self.tf_pipeline_img(image).to(self.device)

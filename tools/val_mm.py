@@ -1,4 +1,6 @@
 import cv2
+import datetime
+import torchvision.utils as vutil
 import torch
 import argparse
 import yaml
@@ -11,6 +13,7 @@ from PIL import Image
 from tqdm import tqdm
 from tabulate import tabulate
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from torch.nn import functional as F
 from semseg.models import *
 from semseg.datasets import *
@@ -24,14 +27,41 @@ from torch.utils.data import DistributedSampler, RandomSampler
 from torch import distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from semseg.utils.utils import fix_seeds, setup_cudnn, cleanup_ddp, setup_ddp, get_logger, cal_flops, print_iou
+from semseg.models.modules.cfm import ExternalAttentionRectifyModule as EARM
+from semseg.models.modules.cfm import CrossFusionModule as CFM
+
+INSTANCE_FOLDER = '/home/gsn/icode/MSegmentation/DELIVER/result'
 
 logger = get_logger()
 
 
+# def get_my_labels(*args):
+#     " r,g,b"
+#     return np.array([
+#         [44, 160, 44],  # asphalt
+#         [31, 119, 180],  # concrete
+#         [255, 127, 14],  # metal
+#         [214, 39, 40],  # road marking
+#         [140, 86, 75],  # fabric, leather
+#         [127, 127, 127],  # glass
+#         [188, 189, 34],  # plaster
+#         [255, 152, 150],  # plastic
+#         [23, 190, 207],  # rubber
+#         [174, 199, 232],  # sand
+#         [196, 156, 148],  # gravel
+#         [197, 176, 213],  # ceramic
+#         [247, 182, 210],  # cobblestone
+#         [199, 199, 199],  # brick
+#         [219, 219, 141],  # grass
+#         [158, 218, 229],  # wood
+#         [57, 59, 121],  # leaf
+#         [107, 110, 207],  # water
+#         [156, 158, 222],  # human body
+#         [99, 121, 57]])  # sky
 def get_my_labels(*args):
     " r,g,b"
     return np.array([
-        [44, 160, 44],  # asphalt
+        [0, 0, 0],  # asphalt
         [31, 119, 180],  # concrete
         [255, 127, 14],  # metal
         [214, 39, 40],  # road marking
@@ -39,19 +69,7 @@ def get_my_labels(*args):
         [127, 127, 127],  # glass
         [188, 189, 34],  # plaster
         [255, 152, 150],  # plastic
-        [23, 190, 207],  # rubber
-        [174, 199, 232],  # sand
-        [196, 156, 148],  # gravel
-        [197, 176, 213],  # ceramic
-        [247, 182, 210],  # cobblestone
-        [199, 199, 199],  # brick
-        [219, 219, 141],  # grass
-        [158, 218, 229],  # wood
-        [57, 59, 121],  # leaf
-        [107, 110, 207],  # water
-        [156, 158, 222],  # human body
-        [99, 121, 57]])  # sky
-
+        [255,255,255]])  # sky
 def pad_image(img, target_size):
     rows_to_pad = max(target_size[0] - img.shape[2], 0)
     cols_to_pad = max(target_size[1] - img.shape[3], 0)
@@ -82,24 +100,98 @@ def sliding_predict(model, image, num_classes, flip=True):
             padded_img = [pad_image(modal, tile_size) for modal in img]
             tile_counter += 1
             padded_prediction = model(padded_img)
+
             if flip:
                 fliped_img = [padded_modal.flip(-1) for padded_modal in padded_img]
                 fliped_predictions = model(fliped_img)
                 padded_prediction += fliped_predictions.flip(-1)
+
             predictions = padded_prediction[:, :, :img[0].shape[2], :img[0].shape[3]]
             count_predictions[y_min:y_max, x_min:x_max] += 1
             total_predictions[:, y_min:y_max, x_min:x_max] += predictions.squeeze(0)
 
     return total_predictions.unsqueeze(0)
 
+def get_image_name_for_hook(module):
+    """
+    Generate image filename for hook function
+
+    Parameters:
+    -----------
+    module: module of neural network
+    """
+    os.makedirs(INSTANCE_FOLDER, exist_ok=True)
+    base_name = str(module).split('(')[0]
+    index = 0
+    image_name = '.'  # '.' is surely exist, to make first loop condition True
+    while os.path.exists(image_name):
+        index += 1
+        image_name = os.path.join(
+            INSTANCE_FOLDER, '%s_%d_%d.png' % (base_name, index, 0))
+    return image_name
+def hook_func_d2o(module, input, output):
+    """
+      Hook function of register_forward_hook
+
+      Parameters:
+      -----------
+      module: module of neural network
+      input: input of module
+      output: output of module
+      """
+    image_name = get_image_name_for_hook(module)
+    image_name = image_name.rstrip('0.png')
+    data = output.clone().detach()
+    data = data.permute(1, 0, 2, 3)
+    # vutil.save_image(data, image_name, pad_value=0.5)
+    for j in range(4):
+        data1 = data[j]
+        timestamp = datetime.datetime.now().strftime("%M-%S")
+        savepath = image_name + timestamp + '.png'
+        vutil.save_image(data1, savepath, pad_value=0.5)
+
+
+
+
+def hook_func(module, input, output):
+    """
+    Hook function of register_forward_hook
+
+    Parameters:
+    -----------
+    module: module of neural network
+    input: input of module
+    output: output of module
+    """
+    image_name = get_image_name_for_hook(module)
+    image_name = image_name.rstrip('0.png')
+    for i in range(2):
+        out = output[i]
+        data = out.clone().detach()
+        data = data.permute(1, 0, 2, 3)
+        for j in range(2):
+            data1 = data[j]
+            timestamp = datetime.datetime.now().strftime("%M-%S")
+            savepath = image_name + timestamp + ('%d.png' % i)
+            vutil.save_image(data1, savepath, pad_value=0.5)
+
+
 @torch.no_grad()
-def evaluate(model, dataloader, device, bgm):
+def evaluate(model, dataloader, device, bgm, writer):
     print('Evaluating...')
+    # 这里临时添加了网络特征的可视化函数
+    for name, module in model.named_modules():
+        if isinstance(module, EARM):
+            module.register_forward_hook(hook_func)
+        if isinstance(module, CFM):
+            module.register_forward_hook(hook_func_d2o)
     model.eval()
+
     n_classes = dataloader.dataset.n_classes
     metrics = Metrics(n_classes, dataloader.dataset.ignore_label, device)
     sliding = False
     item = 0
+
     for images, labels in tqdm(dataloader):
         item = item + 1
         images = [x.to(device) for x in images]
@@ -109,6 +201,7 @@ def evaluate(model, dataloader, device, bgm):
             labels = labels.to(device)
         else:
             labels = labels.to(device)
+
         if sliding:
             preds = sliding_predict(model, images, num_classes=n_classes).softmax(dim=1)
         else:
@@ -119,6 +212,9 @@ def evaluate(model, dataloader, device, bgm):
                 preds = model(images).softmax(dim=1)
         metrics.update(preds, labels)
 
+
+        # 记录特征到TensorBoard
+        # 获取某一层的特征
         # add by gsn for print result
         # ......
         # save_path = 'result'
@@ -140,7 +236,7 @@ def evaluate(model, dataloader, device, bgm):
         #     result_img.save(os.path.join(save_path+'/result_color', fn))
         #
         #     # save raw result
-        #     cv2.imwrite(os.path.join(save_path, fn), pred)
+        #     cv2.imwrite(os.path.join(save_path, fn), pred*5)
         #     logger.info('Save the image ' + fn)
     
     ious, miou = metrics.compute_iou()
@@ -214,6 +310,12 @@ def main(cfg):
     eval_path = os.path.join(os.path.dirname(eval_cfg['MODEL_PATH']), 'eval_{}.txt'.format(exp_time))
     bgm = cfg['MODEL']['BOUNDARY']
 
+    modals = ''.join([m[0] for m in cfg['DATASET']['MODALS']])
+    model = cfg['MODEL']['BACKBONE']
+    exp_name = '_'.join([cfg['DATASET']['NAME'], model, modals])
+    save_dir = Path(cfg['SAVE_DIR'], exp_name)
+    writer = SummaryWriter(str(save_dir))
+
     for case in cases:
         dataset = eval(cfg['DATASET']['NAME'])(cfg['DATASET']['ROOT'], 'val', transform, cfg['DATASET']['MODALS'], case)
         # --- test set
@@ -229,7 +331,7 @@ def main(cfg):
             if eval_cfg['MSF']['ENABLE']:
                 acc, macc, f1, mf1, ious, miou = evaluate_msf(model, dataloader, device, eval_cfg['MSF']['SCALES'], eval_cfg['MSF']['FLIP'], bgm)
             else:
-                acc, macc, f1, mf1, ious, miou = evaluate(model, dataloader, device, bgm)
+                acc, macc, f1, mf1, ious, miou = evaluate(model, dataloader, device, bgm, writer)
 
             table = {
                 'Class': list(dataset.CLASSES) + ['Mean'],
@@ -245,13 +347,14 @@ def main(cfg):
             f.write("\n============== Eval on {} {} images =================\n".format(case, len(dataset)))
             f.write("\n")
             print(tabulate(table, headers='keys'), file=f)
+    writer.close()
 
 
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default='configs/DELIVER.yaml')
+    parser.add_argument('--cfg', type=str, default='configs/mcubes_rgbadn_next.yaml')
     args = parser.parse_args()
 
     with open(args.cfg) as f:

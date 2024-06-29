@@ -42,10 +42,16 @@ SCHEDULER:
 
 
 EVAL:
-  MODEL_PATH    : 'output/IR.pth'
-  IMAGE_SIZE    : [640, 640]      # evaluation image size in (h, w)
-  BATCH_SIZE    : 2               # batch size used to train
+  MODEL_PATH    : 'output/IRSEG_GFBN-B2_it/GFBN_GFBN-B2_IRSEG_epoch380_65.46.pth'
+  IMAGE_SIZE    : [480, 640]      # evaluation image size in (h, w)
+  BATCH_SIZE    : 1               # batch size used to train
   MSF:
-    ENABLE      : true                                    # multi-scale and flip evaluation
+    ENABLE      : false                                   # multi-scale and flip evaluation
     FLIP        : true                                    # use flip in evaluation
     SCALES      : [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]       # scales used in MSF evaluation
+
+TEST:
+  MODEL_PATH    : 'output/IRSEG_GFBN-B2_it/GFBN_GFBN-B2_IRSEG_epoch380_65.46.pth'   # trained model file path
+  FILE          : 'data/ir_seg_dataset-20230411T072452Z-001/ir_seg_dataset'                          # filename or foldername
+  IMAGE_SIZE    : [480, 640]                            # inference image size in (h, w)
+  OVERLAY       : false                                   # save the overlay result (image_alpha+label_alpha)
